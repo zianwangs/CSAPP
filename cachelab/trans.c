@@ -102,40 +102,65 @@ void transpose_64(int M, int N, int A[N][M], int B[M][N])
     }
 }
 
+int min(int a, int b) {return a > b ? b : a;}
 
 void transpose_61(int M, int N, int A[N][M], int B[M][N])
 {
-    int a0, a1, a2, a3, a4, a5, a6, a7; 
-    for (int jj = 0; jj < 64; jj += 8) { 
-        for (int kk = 0; kk < 56; kk += 28) {
-             for (int k = jj; k < jj + 8; ++k) {
-                a0 = A[k][kk], a1 = A[k][kk + 1], a2 = A[k][kk + 2], a3 = A[k][kk + 3];
-                a4 = A[k][kk + 4], a5 = A[k][kk + 5], a6 = A[k][kk + 6], a7 = A[k][kk + 7];
-                B[kk][k] = a0, B[kk + 1][k] = a1, B[kk + 2][k] = a2, B[kk + 3][k] = a3;
-                B[kk + 4][k] = a4, B[kk + 5][k] = a5, B[kk + 6][k] = a6, B[kk + 7][k] = a7;
-             }
-        }
-    }
-         
+    int a0, a1, a2, a3, a4, a5, a6, a7, b = 16, c = 16;
+    for (int jj = 0; jj < N; jj += b) { 
+        for (int kk = 0; kk < M; kk += c) {
+            if (jj + b <= N && kk + c <= M) {
+             for (int k = jj; k < jj + b; ++k) {
+                a0 = A[k][kk];
+                a1 = A[k][kk + 1];
+                a2 = A[k][kk + 2];
+                a3 = A[k][kk + 3];
+                a4 = A[k][kk + 4];
+                a5 = A[k][kk + 5];
+                a6 = A[k][kk + 6];
+                a7 = A[k][kk + 7];
+                B[kk][k] = a0;
+                B[kk + 1][k] = a1;
+                B[kk + 2][k] = a2;
+                B[kk + 3][k] = a3;
+                B[kk + 4][k] = a4;
+                B[kk + 5][k] = a5;
+                B[kk + 6][k] = a6;
+                
+                B[kk + 7][k] = a7;
+                a0 = A[k][kk + 8];
+                a1 = A[k][kk + 9];
+                a2 = A[k][kk + 10];
+                a3 = A[k][kk + 11];
+                a4 = A[k][kk + 12];
+                a5 = A[k][kk + 13];
+                a6 = A[k][kk + 14];
+                a7 = A[k][kk + 15];
+                B[kk + 8][k] = a0;
+                B[kk + 9][k] = a1;
+                B[kk + 10][k] = a2;
+                B[kk + 11][k] = a3;
+                B[kk + 12][k] = a4;
+                B[kk + 13][k] = a5;
+                B[kk + 14][k] = a6;
+                B[kk + 15][k] = a7;
              
-             for (int i = 64; i < N; ++i) {
-                for (int j = 0; j < M; ++j) {
-                    B[j][i] = A[i][j];
+
+}
+           } else {
+                for (int i = jj; i < min(jj + b,N); ++i) {
+                    for (int j = kk; j < min(kk + c,M); ++j) B[j][i] = A[i][j];
                 }
-            }
-            for (int i = 0; i < 64; ++i) {
-                for (int j = 56; i < M; ++j) {
-                    B[j][i] = A[i][j];
-                }
-            }
-           
+           }
+         }
+    }         
 }
 
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
     if (M == 32) transpose_32(M, N, A, B);
-    else if (N <= 64) transpose_64(M, N, A, B);
+    else if (M == 64) transpose_64(M, N, A, B);
     else transpose_61(M, N, A, B);
 
 }
