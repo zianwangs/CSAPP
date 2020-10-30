@@ -127,16 +127,6 @@ int mm_init(void)
     end = mem_sbrk(WSIZE);
     put(start, 1);
     put(end, 1);
-    
-    void * pp = mem_sbrk(72);
-    end = pp + 72 - WSIZE;
-    put(end, 1);
-    createBlock(pp, 2, 16, 0);
-    createBlock(pp + 24, 2, 16, 0);
-    addFirst(pp);
-    addFirst(pp + 24);
-    createBlock(pp + 48, 2, 16, 0);
-    addFirst(pp + 48);
     return 0;
 }
 
@@ -174,79 +164,61 @@ void mm_free(void * p) {
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-    size_t original = getCapacity(header(ptr)), remains;
-    size_t alignedSize = ALIGN(size), class = memToClass(alignedSize);
+    if (ptr == NULL) return mm_malloc(size);
+    if (size == 0) {
+        mm_free(ptr);
+        return;
+    }
+    size_t original = getCapacity(header(ptr));
+    size_t alignedSize = ALIGN(size);
+    size_t class = memToClass(alignedSize);
     if (original >= alignedSize) return ptr;
+    else if (original > alignedSize) {
+        size_t remains = original - alignedSize;
+        if (remains <= 32) { /* NOTE!STRATEGY BE MODIFIED HERE! */ 
+            return ptr;
+        } else {
+            void * new = ptr + alignedSize + DSIZE;
+            put(header(ptr), alignedSize + 8 | classInHead(class) | 1);
+            put(footer(ptr), alignedSize + 8 | classInFoot(class));
+            upgrade(new, remains - DSIZE);
+            return ptr;
+        }
+    }
+    size_t remains = alignedSize - original;
     void * after = afterHead(ptr);
-    size_t a = get(ptr), b = get(ptr + 4);
+    
+
     if (after == end) {
-        size_t remains = alignedSize - original;
-        void * pp = mem_sbrk(remains);
-        end = pp + remains - WSIZE;
+        void * p = mem_sbrk(remains);
+        end = p + remains - WSIZE;
         put(end, 1);
         put(header(ptr), alignedSize + 8 | classInHead(class) | 1);
         put(footer(ptr), alignedSize + 8 | classInFoot(class));
         return ptr;
+
     }
-    if (!isAllocated(after)) {
-        void * ab = after + WSIZE, * head = after;
-        after = afterHead(ab);
-        size_t cap = getCapacity(head);
-        if (cap + original + 8 >= alignedSize) {
-           delete(ab);
-           size_t cur = cap + original + 8, cc = memToClass(cur);
-           put(header(ptr), cur + 8 | classInHead(cc) | 1);
-           put(footer(ptr), cur + 8 | classInFoot(cc));
-           return ptr;
+    if (!isAllocated(after) && getCapacity(after) >= remains) {
+        void * new = ptr + alignedSize + DSIZE;
+        void * after_body = after + WSIZE;
+        size_t cap = getCapacity(after) - remains;
+        size_t c = memToClass(alignedSize);
+        delete(after_body);
+        if (cap >102400) {
+            upgrade(new, cap);
+            put(header(ptr), alignedSize + 8 | classInHead(c) | 1);
+            put(footer(ptr), alignedSize + 8 | classInFoot(c));
+        } else {
+            c = memToClass(original + getBlock(after));
+            put(header(ptr), original + getBlock(after) + 8 | classInHead(c) | 1);
+            put(footer(ptr), original + getBlock(after) + 8 | classInFoot(c));
         }
-        if (after == end) {
-            delete(ab);
-            size_t remains = alignedSize - original - cap - 8;
-            void * pp = mem_sbrk(remains);
-            end = pp + remains - WSIZE;
-            put(end, 1);
-            put(header(ptr), alignedSize + 8 | classInHead(class) | 1);
-            put(footer(ptr), alignedSize + 8 | classInFoot(class));
-            return ptr;
-        }
+        return ptr;
     }
-
-
-
-
-
-    createBlock(ptr, getClass(ptr), getCapacity(header(ptr)), 0);
-    void * p = coalesce(ptr);
-    after = afterHead(p);
-    size_t maxcap = getCapacity(header(p)), c = getClass(p);
-    if (maxcap >= alignedSize) {
-      
-        delete(p);
-        put(header(p), maxcap + 8 | classInHead(c) | 1);
-        put(footer(p), maxcap + 8 | classInFoot(c));
-        if (p != ptr) {
-            memmove(p, ptr, original);
-        }
-        
-        put(p, a), put(p + 4, b);
-        return p;
-    }
-
-    remains = alignedSize - maxcap;
-    if (after == end) {
-        delete(p);
-        void * pp = mem_sbrk(remains);
-        end = pp + remains - WSIZE;
-        put(end, 1);
-        put(header(p), alignedSize + 8 | classInHead(class) | 1);
-        put(footer(p), alignedSize + 8 | classInFoot(class));
-        if (p != ptr) memcpy(p, ptr, original);
-        put(p, a), put(p + 4, b);
-        return p;
-    }
+    
     void * new = mm_malloc(size);
     memcpy(new, ptr, original);
-    put(new, a), put(new + 4, b);
+    mm_free(ptr);
     return new;
 }
 
