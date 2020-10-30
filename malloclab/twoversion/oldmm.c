@@ -158,7 +158,7 @@ void *mm_realloc(void *ptr, size_t size)
     if (original == alignedSize) return ptr;
     else if (original > alignedSize) {
         size_t remains = original - alignedSize;
-        if (remains <= max(8, original / 8)) { /* NOTE! STRATEGY MAY BE MODIFIED HERE! */
+        if (remains <= 8) { /* NOTE! STRATEGY MAY BE MODIFIED HERE! */
             return ptr;
         } else {
             void * new = ptr + alignedSize + DSIZE;
@@ -266,7 +266,7 @@ static void * coalesce(void * p) {
 static void * find(size_t class, size_t size) {
     void * p; 
     for (size_t t = class; t < 32; ++t) {
-        p = (void *)get(table + class * WSIZE);
+        p = (void *)get(table + t * WSIZE);
         while (p != 0) {
             if (getCapacity(header(p)) >= size) return p;
             p = get(next(p));
@@ -279,7 +279,7 @@ static size_t split(void * p, size_t size) {
     int maxSize = getCapacity(header(p));
     void * father = get(pre(p));
     void * son = get(next(p));
-    if (maxSize - size <= max(8, maxSize / 8)) { /* NOTE! STRATEGY MAY BE MODIFIED HERE! */
+    if (maxSize - size <= max(8, 0)) { /* NOTE! STRATEGY MAY BE MODIFIED HERE! */
         connect(father, son);
         return maxSize;
     } else {
@@ -319,7 +319,7 @@ static void createAllocated(void * p, size_t class, size_t capacity) {
 static void * extend(size_t class) {
     void * father = table + class * WSIZE;
     void * son = (void *)get(father);
-    size_t block = classToBlock(class);
+    size_t block = classToBlock(class) * 8;
     void * p = mem_sbrk(block);
     if (p == (void *)-1) return NULL;
     end = p + block - WSIZE;

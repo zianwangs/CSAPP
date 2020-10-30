@@ -54,7 +54,7 @@ team_t team = {
 #define min(x, y) ((x) < (y) ? (x) : (y))
 #define classToCapacity(x) ((x) == 0 ? 8 : (1 << ((x) + 2)))
 #define classToBlock(x) (classToCapacity(x) + DSIZE)
-#define getClass(p) (((get(header(p)) & 0x6) << 2) + (get(footer(p)) & 0x7)) 
+#define getClass(p) (((get(header(p)) & 0x6) << 2) + (get(footer(p)) & 0x7))
 #define header(p) (p - WSIZE)
 #define footer(p) (p + getBlock(header(p)) - DSIZE)
 #define pre(fp) (fp)
@@ -78,10 +78,14 @@ static void * find(size_t class, size_t size);
 static size_t split(void * p, size_t size);
 static void place(void * p, size_t size);
 static void * extend(size_t class);
-static void moveToFront(size_t class, size_t size);
+static void delete(void * p);
+static void addFirst(void * p);
+static void addLast(void * p);
 static void connect(void * father, void * son);
-static void createFree(void * p, size_t class, size_t capacity, void * father, void * son);
-static void createAllocated(void * p, size_t class, size_t capacity);
+static void createBlock(void * p, size_t class, size_t capacity, int allocated);
+static void upgrade(void * p, size_t capacity);
+static void degrade(void * p, size_t capacity);
+static void * stretch(size_t capacity);
 /* My global variables */
 static void * table;
 static void * start;
@@ -100,20 +104,25 @@ static void * end;
 int mm_init(void)
 {
     void * cur;
-    table = mem_sbrk(32 * WSIZE);
+    table = mem_sbrk(32 * DSIZE);
     start = mem_sbrk(WSIZE);
     void * index = table;
     for (int i = 0; i < RANGE; ++i) {
         int size = classToBlock(i) * INIT;
         cur = mem_sbrk(size);
         if (cur == (void *)-1) return -1;
+        /*
         cur += WSIZE;
         createFree(cur, i, size - DSIZE, index, 0);
         index += WSIZE;
+
+        To be modified, since RANGE defined as 0, no need for this at present.
+        */
     }
     for (int i = RANGE; i < 32; ++i) {
-        put(index, 0);
-        index += WSIZE;
+        put(pre(index), index);
+        put(next(index), index);
+        index += DSIZE;
     }
     end = mem_sbrk(WSIZE);
     put(start, 1);
@@ -130,10 +139,12 @@ void *mm_malloc(size_t size) {
     size_t class = memToClass(size);
     size_t alignedSize = ALIGN(size);
     void * p = find(class, alignedSize);
-    if (p != NULL) {
+    if( (p != NULL) || (p = stretch(alignedSize)) != NULL) {
         place(p, alignedSize);
         return p;
-    } 
+    }
+    //void * last_foot = end - WSIZE;
+    
     p = extend(class);
     if (p == NULL) return NULL;
     place(p, alignedSize);
@@ -144,6 +155,7 @@ void *mm_malloc(size_t size) {
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void * p) {
+    createBlock(p, getClass(p), getCapacity(header(p)), 0);
     coalesce(p);
 }
 
@@ -154,17 +166,15 @@ void *mm_realloc(void *ptr, size_t size)
 {
     size_t original = getCapacity(header(ptr));
     size_t alignedSize = ALIGN(size);
-    size_t class = getClass(header(ptr));
+    size_t class;
     if (original == alignedSize) return ptr;
     else if (original > alignedSize) {
         size_t remains = original - alignedSize;
-        if (remains <= max(8, original / 8)) { /* NOTE! STRATEGY MAY BE MODIFIED HERE! */
+        if (remains <= max(8, 0)) { /* NOTE! STRATEGY MAY BE MODIFIED HERE! */
             return ptr;
         } else {
             void * new = ptr + alignedSize + DSIZE;
-            put(header(new), remains | classInHead(class) | 0);
-            put(footer(new), remains | classInFoot(class));
-            coalesce(new);
+            upgrade(new, remains - DSIZE);
             return ptr;
         }
     }
@@ -181,28 +191,20 @@ void *mm_realloc(void *ptr, size_t size)
         return ptr;
 
     }
-    
     if (!isAllocated(after) && getCapacity(after) >= remains) {
         void * new = ptr + alignedSize + DSIZE;
-        size_t cap = getCapacity(after) - remains, new_class = memToClass(alignedSize);
-        size_t after_class = getClass(after + WSIZE);
+        void * after_body = after + WSIZE;
+        size_t cap = getCapacity(after) - remains;
+        size_t c = memToClass(alignedSize);
+        delete(after_body);
         if (cap >= 8) {
-            size_t c = memToClass(cap);
-            
-            void * father = get(pre(after + WSIZE)), *son = get(next(after + WSIZE));
-            /*
-            connect(father, son);
-            */
-            void * t = table + c * WSIZE, *ts = get(t);
-           
-            createFree(new, after_class, cap, father, son);
-      
-            put(header(ptr), alignedSize + 8 | classInHead(new_class) | 1);
-            put(footer(ptr), alignedSize + 8 | classInFoot(new_class));
+            upgrade(new, cap);
+            put(header(ptr), alignedSize + 8 | classInHead(c) | 1);
+            put(footer(ptr), alignedSize + 8 | classInFoot(c));
         } else {
-            new_class = memToClass(original + getBlock(after) + 8);
-            put(header(ptr), original + getBlock(after) + 8 | classInHead(new_class) | 1);
-            put(footer(ptr), original + getBlock(after) + 8 | classInFoot(new_class));
+            c = memToClass(original + getBlock(after) + 8);
+            put(header(ptr), original + getBlock(after) + 8 | classInHead(c) | 1);
+            put(footer(ptr), original + getBlock(after) + 8 | classInFoot(c));
         }
         return ptr;
     }
@@ -217,57 +219,77 @@ void *mm_realloc(void *ptr, size_t size)
 int main() {
     mem_init();
     mm_init();
-    for (int i = 0; i < 10000; ++i) {
-        mm_malloc(64);
-        mm_malloc(448);
-        }
-    //for (int i)
+    void * p = mm_malloc(64);
+    void * q = mm_malloc(448);
+    void * r = mm_malloc(64);
+    void * s = mm_malloc(448);
+    void * t = mm_malloc(64);
+    void * u = mm_malloc(448);
+    mm_free(p);
+    mm_free(q);
+    mm_free(r);
+    mm_free(s);
+    mm_free(t);
+    mm_free(u);
+    /*
+a 0 2040
+a 1 4010
+a 2 48
+a 3 4072
+a 4 4072
+a 5 4072
+    */
+    printf("done.");
     return 0;
 }
 #endif
 
+static void * stretch(size_t cap) {
+    void * last_foot = end - WSIZE;
+    size_t lastAllocated = last_foot == start ? 1 : isAllocated(footToHead(last_foot));
+    if (lastAllocated) return NULL;
+    void * last = footToBody(last_foot);
+    delete(last);
+    size_t last_cap = getCapacity(header(last)), diff = cap - last_cap;
+    void * p = mem_sbrk(diff);
+    end += diff;
+    put(end, 1);
+    createBlock(last, memToClass(cap), cap, 0);
+    addFirst(last);
+    return last;
+}
 
 static void * coalesce(void * p) {
-    void * before_foot = beforeFoot(p);
-    void * after_head = afterHead(p);
+    void * before_foot = beforeFoot(p), * after_head = afterHead(p);
     size_t beforeAllocated = before_foot == start ? 1 : isAllocated(footToHead(before_foot));
     size_t afterAllocated = isAllocated(after_head);
-    size_t beforeClass = 32, afterClass = 32, class = getClass(p), cap = getCapacity(header(p));
-    void * father = table + class * WSIZE;
-    void * son = (void *)get(father);
-    if (!beforeAllocated) beforeClass = getClass(footToBody(before_foot));
-    if (!afterAllocated) afterClass = getClass(after_head + WSIZE);
-    if (beforeClass != class && afterClass != class) {
-        createFree(p, class, cap, father, son);
-    } else if (beforeClass == class && afterClass != class) {
+    size_t cap = getCapacity(header(p));
+    if (beforeAllocated && afterAllocated) {
+        addFirst(p);
+        /* STATEGY HERE, TO BE MODIFIED!! */
+    } else if (!beforeAllocated && afterAllocated) {
         p = footToBody(before_foot);
-        createFree(p, class, getBlock(header(p)) + cap, get(pre(p)), get(next(p))); 
+        delete(p);
+        upgrade(p, getBlock(header(p)) + cap);
         /* NO MOVE TO FRONT !! COULD BE MODIFIED !! */
-    } else if (beforeClass != class && afterClass == class) {
+    } else if (beforeAllocated && !afterAllocated) {
         void * after_body = after_head + WSIZE;
-        createFree(p, class, getBlock(after_head) + cap, get(pre(after_body)), get(next(after_body)));
+        delete(after_body);
+        upgrade(p, getBlock(header(after_body)) + cap);
     } else {
         void * after_body = after_head + WSIZE;
         p = footToBody(before_foot);
-        void * before_pre = get(pre(p)), * before_next = get(next(p));
-        void * after_pre = get(pre(after_body)), * after_next = get(next(after_body));
-        if (before_pre == after_body) {
-            createFree(p, class, getBlock(after_head) + getBlock(header(p)) + cap, after_pre, before_next);
-        } else if (after_pre == p) {
-            createFree(p, class, getBlock(after_head) + getBlock(header(p)) + cap, before_pre, after_next);
-        } else {
-            createFree(p, class, getBlock(after_head) + getBlock(header(p)) + cap, before_pre, before_next);
-            connect(after_pre, after_next);
-        }
+        delete(p);
+        delete(after_body);
+        upgrade(p, getBlock(header(p)) + cap + getBlock(header(after_body)));
     }
     return p;
 
 };
 static void * find(size_t class, size_t size) {
-    void * p; 
     for (size_t t = class; t < 32; ++t) {
-        p = (void *)get(table + class * WSIZE);
-        while (p != 0) {
+        void * sentinel = table + t * DSIZE, * p = get(next(sentinel));
+        while (p != sentinel) {
             if (getCapacity(header(p)) >= size) return p;
             p = get(next(p));
         }
@@ -276,70 +298,71 @@ static void * find(size_t class, size_t size) {
 }
 
 static size_t split(void * p, size_t size) {
-    int maxSize = getCapacity(header(p));
-    void * father = get(pre(p));
-    void * son = get(next(p));
-    if (maxSize - size <= max(8, maxSize / 8)) { /* NOTE! STRATEGY MAY BE MODIFIED HERE! */
-        connect(father, son);
-        return maxSize;
+    size_t remains = getCapacity(header(p)) - size;
+    delete(p);
+    if (remains <= max(8, getCapacity(header(p))/8)) { /* NOTE! STRATEGY MAY BE MODIFIED HERE! */
+        return remains + size;
     } else {
-        createFree(p + size + DSIZE, getClass(p), maxSize - size - DSIZE, father, son);
+        degrade(p + size + DSIZE, remains - DSIZE);
         return size;
     }
 }
 
+static void delete(void * p) {
+    connect(get(pre(p)), get(next(p)));
+}
+
+static void degrade(void * p, size_t capacity) {
+    size_t class = memToClass(capacity);
+    createBlock(p, class, capacity, 0);
+    addLast(p);
+}
+
+static void upgrade(void * p, size_t capacity) {
+    size_t class = memToClass(capacity);
+    createBlock(p, class, capacity, 0);
+    addFirst(p);
+}
+
 static void connect(void * father, void * son) {
-    if (father < start) {
-        put(father, son);
-    } else {
-        put(next(father), son);
-    }
-    if (son != 0) put(pre(son), father);
+    put(pre(son), father);
+    put(next(father), son);
 };
 
 static void place(void * p, size_t size) {
     size_t capacity = split(p, size);
-    createAllocated(p, getClass(p), capacity);
+    createBlock(p, memToClass(capacity), capacity, 1);
 };
 
-static void createFree(void * p, size_t class, size_t capacity, void * father, void * son) {
+static void createBlock(void * p, size_t class, size_t capacity, int allocated) {
     size_t size = capacity + DSIZE;
-    put(header(p), size | classInHead(class) | 0);
-    put(footer(p), size | classInFoot(class));
-    connect(father, p);
-    connect(p, son);
-};
-
-static void createAllocated(void * p, size_t class, size_t capacity) {
-    size_t size = capacity + DSIZE;
-    put(header(p), size | classInHead(class) | 1);
+    put(header(p), size | classInHead(class) | allocated);
     put(footer(p), size | classInFoot(class));
 };
 
 static void * extend(size_t class) {
-    void * father = table + class * WSIZE;
-    void * son = (void *)get(father);
     size_t block = classToBlock(class);
     void * p = mem_sbrk(block);
     if (p == (void *)-1) return NULL;
     end = p + block - WSIZE;
     put(end, 1);
-    
-    void * f = beforeFoot(p);
-    if (f != start && !isAllocated(footToHead(f)) && getClass(footToBody(f)) == class) {
-        p = footToBody(f);
-        createFree(p, class, getCapacity(header(p)) + block, get(pre(p)), get(next(p)));
-        return p;
-    }
-    
-    createFree(p, class, block - DSIZE, father, son);
-    return p; /* STRATEGY TO MODIFY HERE, COULD RETURN COALESCE(P)*/
-
-};
-static void moveToFront(size_t class, size_t size) {
+    createBlock(p, class, block - DSIZE, 0);
+    return coalesce(p);
 };
 
+static void addFirst(void * p) {
+    size_t class = getClass(p);
+    void * sentinel = table + class * DSIZE, * front = get(next(sentinel));
+    connect(sentinel, p);
+    connect(p, front);
+};
 
+static void addLast(void * p) {
+    size_t class = getClass(p);
+    void * sentinel = table + class * DSIZE, * tail = get(pre(sentinel));
+    connect(tail, p);
+    connect(p, sentinel);
+}
 
 static size_t memToClass(size_t size) {
     if (size-- <= 4) return 0;
