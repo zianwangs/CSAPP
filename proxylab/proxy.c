@@ -58,9 +58,12 @@ Node find(Deque d, char * key);
 void nodeDeinit(Node n);
 
 sbuf_t sbuf;
+int readers;
+sem_t readlock;
 
 int main(int argc, char **argv)
 {
+    sem_init(&readlock, 0, 1);
     int listenfd, connfd;
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
@@ -142,17 +145,24 @@ void doit(int fd) {
         clienterror(fd, "501 Not implemented");
         return;
     }
-    char * kcopy = malloc(strlen(urll) + 1);
-    strcpy(kcopy, urll);
     Node n = NULL;
-    //P(&cache.mutex);
-    if ((n = find(&cache, urll)) != NULL) {
+    
+    P(&readlock);
+    readers++;
+    if (readers == 1) P(&cache.mutex);
+    V(&readlock);
+    
+    n = find(&cache, urll); //reading, support multi-reading
+    
+    P(&readlock);
+    readers--;
+    if (readers == 0) V(&cache.mutex);
+    V(&readlock);
+    
+    if (n != NULL) {
         P(&cache.mutex);
         moveToFront(&cache, n);
         V(&cache.mutex);
-    }
-    //V(&cache.mutex);
-    if (n != NULL) {
         rio_writen(fd, n->val, n->size);
         return;
     }
@@ -182,6 +192,8 @@ void doit(int fd) {
             Close(clientfd);
             return;
         }
+        char * kcopy = malloc(strlen(urll) + 1);
+        strcpy(kcopy, urll);
         char * val = malloc(read_cnt);        
         memcpy(val, transfer, read_cnt);
         Node nn = malloc(sizeof(struct node));
