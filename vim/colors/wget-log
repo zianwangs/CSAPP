@@ -1,0 +1,31 @@
+--2020-08-09 04:29:22--  https://raw.githubusercontent.com/sickill/vim-monokai/master/colors/monokai.vim
+Resolving raw.githubusercontent.com (raw.githubusercontent.com)... 0.0.0.0, ::
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|0.0.0.0|:443... failed: Connection refused.
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|::|:443... failed: Cannot assign requested address.
+Retrying.
+
+--2020-08-09 04:29:23--  (try: 2)  https://raw.githubusercontent.com/sickill/vim-monokai/master/colors/monokai.vim
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|0.0.0.0|:443... failed: Connection refused.
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|::|:443... failed: Cannot assign requested address.
+Retrying.
+
+--2020-08-09 04:29:25--  (try: 3)  https://raw.githubusercontent.com/sickill/vim-monokai/master/colors/monokai.vim
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|0.0.0.0|:443... failed: Connection refused.
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|::|:443... failed: Cannot assign requested address.
+Retrying.
+
+--2020-08-09 04:29:28--  (try: 4)  https://raw.githubusercontent.com/sickill/vim-monokai/master/colors/monokai.vim
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|0.0.0.0|:443... failed: Connection refused.
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|::|:443... failed: Cannot assign requested address.
+Retrying.
+
+--2020-08-09 05:04:02--  (try: 5)  https://raw.githubusercontent.com/sickill/vim-monokai/master/colors/monokai.vim
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|0.0.0.0|:443... failed: Connection refused.
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|::|:443... failed: Cannot assign requested address.
+Retrying.
+
+--2020-08-09 05:04:07--  (try: 6)  https://raw.githubusercontent.com/sickill/vim-monokai/master/colors/monokai.vim
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|0.0.0.0|:443... failed: Connection refused.
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|::|:443... failed: Cannot assign requested address.
+Retrying.
+
